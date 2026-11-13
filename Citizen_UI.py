@@ -29,6 +29,12 @@ except (ImportError, ModuleNotFoundError):
     import folium
     from streamlit_folium import st_folium
 
+import uuid
+from datetime import datetime
+import numpy as np
+import pandas as pd
+import streamlit as st
+
 from risk_engine import (
     SA_PRESET_AREAS,
     compute_disaster_score,
