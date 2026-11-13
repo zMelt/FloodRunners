@@ -177,20 +177,61 @@ def load_sa_datasets():
             {"label": "Brooks Innovation Zone Main SSO", "name": "Brooks Innovation Zone Main SSO", "lat": 29.3468, "lon": -98.4385},
         ])
 
-    # 3. SmartSA Streetlight Sensors
-    sl_files = list(DATA_DIR.glob("*street*.csv")) + list(DATA_DIR.glob("*light*.csv")) + list(Path(".").glob("*street*.csv"))
-    if sl_files:
-        sl = _normalize_coords(pd.read_csv(sl_files[0]))
-        sl["label"] = "SmartSA Streetlight Sensor"
-        sl["zone"] = sl["label"]
-        flood_col = next((c for c in sl.columns if "flood" in c.lower() or "water" in c.lower()), None)
-        sl["flood_level_in"] = pd.to_numeric(sl[flood_col], errors="coerce").fillna(0.0) if flood_col else 1.2
+    # 3. SmartSA Streetlight Sensors (load DT, Medical, Brooks flood CSVs if present)
+    dt_f = Path("DT_flood_data.csv")
+    med_f = Path("Medical_flood_data.csv")
+    brooks_f = Path("Brooks_flood_data.csv")
+    brooks_zip = Path("Brooks_flood_data.csv.zip")
+
+    if dt_f.exists() and med_f.exists():
+        sensor_rows = []
+        for name, p, default_lat, default_lon in [
+            ("Downtown Innovation Zone", dt_f, 29.421882, -98.485166),
+            ("Medical Center Innovation Zone", med_f, 29.511164, -98.586094),
+            ("Brooks Innovation Zone", brooks_f, 29.345167, -98.451583),
+        ]:
+            water_in, lat_s, lon_s = 1.0, default_lat, default_lon
+            try:
+                if p.exists():
+                    df_s = pd.read_csv(p)
+                    last = df_s.dropna(subset=["DistToDF_ft", "DistToWL_ft"]).iloc[-1]
+                    water_in = round(max(0.0, float(last["DistToDF_ft"] - last["DistToWL_ft"]) * 12.0), 1)
+                    lat_s = float(last["LAT"]) if "LAT" in last and pd.notna(last["LAT"]) else default_lat
+                    lon_s = float(last["LONG"]) if "LONG" in last and pd.notna(last["LONG"]) else default_lon
+                elif p == brooks_f and brooks_zip.exists():
+                    import zipfile
+                    with zipfile.ZipFile(brooks_zip) as z:
+                        with z.open("Brooks_flood_data.csv") as f:
+                            df_s = pd.read_csv(f)
+                            last = df_s.dropna(subset=["DistToDF_ft", "DistToWL_ft"]).iloc[-1]
+                            water_in = round(max(0.0, float(last["DistToDF_ft"] - last["DistToWL_ft"]) * 12.0), 1)
+                            lat_s = float(last["LAT"]) if "LAT" in last and pd.notna(last["LAT"]) else default_lat
+                            lon_s = float(last["LONG"]) if "LONG" in last and pd.notna(last["LONG"]) else default_lon
+            except Exception:
+                pass
+
+            sensor_rows.append({
+                "label": name,
+                "zone": name,
+                "lat": lat_s,
+                "lon": lon_s,
+                "flood_level_in": water_in,
+            })
+        sl = pd.DataFrame(sensor_rows)
     else:
-        sl = pd.DataFrame([
-            {"label": "Downtown Innovation Zone", "zone": "Downtown Innovation Zone", "lat": 29.4241, "lon": -98.4936, "flood_level_in": 1.8},
-            {"label": "Medical Center Innovation Zone", "zone": "Medical Center Innovation Zone", "lat": 29.5074, "lon": -98.5752, "flood_level_in": 0.0},
-            {"label": "Brooks Innovation Zone", "zone": "Brooks Innovation Zone", "lat": 29.3482, "lon": -98.4351, "flood_level_in": 3.4},
-        ])
+        sl_files = list(DATA_DIR.glob("*street*.csv")) + list(DATA_DIR.glob("*light*.csv")) + list(Path(".").glob("*street*.csv"))
+        if sl_files:
+            sl = _normalize_coords(pd.read_csv(sl_files[0]))
+            sl["label"] = "SmartSA Streetlight Sensor"
+            sl["zone"] = sl["label"]
+            flood_col = next((c for c in sl.columns if "flood" in c.lower() or "water" in c.lower()), None)
+            sl["flood_level_in"] = pd.to_numeric(sl[flood_col], errors="coerce").fillna(0.0) if flood_col else 1.2
+        else:
+            sl = pd.DataFrame([
+                {"label": "Downtown Innovation Zone", "zone": "Downtown Innovation Zone", "lat": 29.4241, "lon": -98.4936, "flood_level_in": 1.0},
+                {"label": "Medical Center Innovation Zone", "zone": "Medical Center Innovation Zone", "lat": 29.5074, "lon": -98.5752, "flood_level_in": 0.2},
+                {"label": "Brooks Innovation Zone", "zone": "Brooks Innovation Zone", "lat": 29.3482, "lon": -98.4351, "flood_level_in": 12.4},
+            ])
 
     return lwc, sso, sl
 
