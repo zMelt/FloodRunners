@@ -242,29 +242,15 @@ with tab_inspect:
             use_photo = st.checkbox("Include Photo in Risk Assessment", value=False)
             photo_path = None
             if use_photo:
-                photo_src = st.radio("Photo Source:", ["Pick from Dataset", "Upload Photo"], horizontal=True)
-                if photo_src == "Pick from Dataset":
-                    sample_paths = sorted([
-                        p for p in IMAGE_ROOT.rglob("*")
-                        if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"} and ".ipynb_checkpoints" not in str(p)
-                    ])
-                    if sample_paths:
-                        sample_dict = {f"{p.parent.name}/{p.name}": str(p) for p in sample_paths[:50]}
-                        picked = st.selectbox("Select Sample Image:", list(sample_dict.keys()))
-                        photo_path = sample_dict[picked]
-                        st.image(photo_path, caption=f"Selected: {picked}", use_container_width=True)
-                    else:
-                        st.info("No sample images found in local directory. Upload a photo below.")
-                else:
-                    uploaded = st.file_uploader(
-                        "Upload photo of street, creek, or drainage inlet",
-                        type=["jpg", "jpeg", "png", "webp"],
-                    )
-                    if uploaded is not None:
-                        saved = UPLOAD_DIR / f"{uuid.uuid4().hex}_{uploaded.name}"
-                        saved.write_bytes(uploaded.getbuffer())
-                        photo_path = str(saved)
-                        st.image(photo_path, caption="Uploaded Street Photo", use_container_width=True)
+                uploaded = st.file_uploader(
+                    "Upload photo of street, creek, or drainage inlet",
+                    type=["jpg", "jpeg", "png", "webp"],
+                )
+                if uploaded is not None:
+                    saved = UPLOAD_DIR / f"{uuid.uuid4().hex}_{uploaded.name}"
+                    saved.write_bytes(uploaded.getbuffer())
+                    photo_path = str(saved)
+                    st.image(photo_path, caption="Uploaded Street Photo", use_container_width=True)
 
         # Trigger Calculation Button
         if st.button("⚡ Calculate Area Probability Score", type="primary", use_container_width=True):
