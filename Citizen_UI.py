@@ -22,11 +22,13 @@ except (ImportError, ModuleNotFoundError):
 # 3. Dynamic fallback for folium if running outside venv
 try:
     import folium
+    from folium.plugins import HeatMap
     from streamlit_folium import st_folium
 except (ImportError, ModuleNotFoundError):
     import subprocess
     subprocess.check_call([sys.executable, "-m", "pip", "install", "folium", "streamlit-folium"])
     import folium
+    from folium.plugins import HeatMap
     from streamlit_folium import st_folium
 
 import uuid
@@ -38,6 +40,7 @@ import streamlit as st
 from risk_engine import (
     SA_PRESET_AREAS,
     compute_disaster_score,
+    get_citywide_heatmap_data,
     get_image_root,
     load_sa_datasets,
     score_all_preset_areas,
@@ -63,6 +66,10 @@ def get_cached_datasets():
 @st.cache_data(show_spinner=False)
 def get_cached_leaderboard():
     return score_all_preset_areas()
+
+@st.cache_data(show_spinner=False)
+def get_cached_heatmap():
+    return get_citywide_heatmap_data()
 
 lwc_df, sso_df, sl_df = get_cached_datasets()
 
@@ -334,34 +341,58 @@ with tab_inspect:
 
     # --- LEFT PANEL: INTERACTIVE SAN ANTONIO RISK MAP ---
     with col_map:
-        st.subheader("🗺️ Live San Antonio Risk & Infrastructure Map")
+        st.subheader("🗺️ Live San Antonio Risk Heatmap & Infrastructure")
 
         # Map Layer Toggles
-        layer_col1, layer_col2, layer_col3 = st.columns(3)
-        show_lwc = layer_col1.checkbox("Show 156 LWC Crossings (🔴)", value=True)
-        show_sl = layer_col2.checkbox("Show Flood Sensors (🔵)", value=True)
-        show_sso = layer_col3.checkbox("Show Sewer Sites (🟣)", value=True)
+        l1, l2, l3, l4 = st.columns(4)
+        show_heat = l1.checkbox("🔥 Heatmap", value=True, help="Disaster Probability Heatmap")
+        show_lwc = l2.checkbox("156 LWC (🔴)", value=False, help="CoSAGIS Low Water Crossings")
+        show_sl = l3.checkbox("Sensors (🔵)", value=True, help="SmartSA Streetlight Flood Sensors")
+        show_sso = l4.checkbox("Sewer (🟣)", value=True, help="TCEQ Sewer Overflow Sites")
 
-        # Build Folium Map
+        # Build Folium Map centered on selected area
         m = folium.Map(
             location=[st.session_state.selected_lat, st.session_state.selected_lon],
             zoom_start=12,
             tiles="OpenStreetMap",
         )
 
-        # 1. Plot Low Water Crossings (156 CoSAGIS)
+        # 1. Plot Disaster Probability Heatmap
+        if show_heat:
+            heat_points = get_cached_heatmap().copy()
+            heat_points.append([
+                float(st.session_state.selected_lat),
+                float(st.session_state.selected_lon),
+                max(0.3, float(score) / 100.0),
+            ])
+            HeatMap(
+                heat_points,
+                name="Disaster Probability Heatmap",
+                min_opacity=0.38,
+                radius=25,
+                blur=17,
+                gradient={
+                    0.20: "#2b83ba",  # Low risk: Blue/Cyan
+                    0.40: "#abdda4",  # Moderate-Low: Green
+                    0.60: "#ffffbf",  # Moderate: Yellow
+                    0.75: "#fdae61",  # High: Orange
+                    1.00: "#d7191c",  # Severe / Flash Flood: Red
+                },
+            ).add_to(m)
+
+        # 2. Plot Low Water Crossings (156 CoSAGIS)
         if show_lwc:
             for _, r in lwc_df.iterrows():
                 folium.CircleMarker(
                     location=[r["lat"], r["lon"]],
-                    radius=5,
+                    radius=4,
                     color="#d9534f",
                     fill=True,
-                    fill_opacity=0.7,
+                    fill_opacity=0.6,
                     popup=f"<b>CoSAGIS Low Water Crossing:</b><br>{r['label']}",
                 ).add_to(m)
 
-        # 2. Plot Smart Streetlight Flood Sensors
+        # 3. Plot Smart Streetlight Flood Sensors
         if show_sl:
             for _, r in sl_df.iterrows():
                 folium.CircleMarker(
@@ -373,7 +404,7 @@ with tab_inspect:
                     popup=f"<b>Smart Streetlight Flood Sensor:</b><br>{r['label']}<br>Water Level: <b>{r['flood_level_in']} in.</b>",
                 ).add_to(m)
 
-        # 3. Plot TCEQ Sewer Overflow Sites
+        # 4. Plot TCEQ Sewer Overflow Sites
         if show_sso:
             for _, r in sso_df.iterrows():
                 folium.CircleMarker(
@@ -385,7 +416,7 @@ with tab_inspect:
                     popup=f"<b>TCEQ Sewer Overflow Site:</b><br>{r['label']}",
                 ).add_to(m)
 
-        # 4. Highlight the CURRENTLY INSPECTED AREA with a prominent pin
+        # 5. Highlight the CURRENTLY INSPECTED AREA with a prominent pin
         pin_color = "red" if score >= 70 else ("orange" if score >= 40 else "green")
         folium.Marker(
             location=[st.session_state.selected_lat, st.session_state.selected_lon],
@@ -396,10 +427,17 @@ with tab_inspect:
         # Render Map
         map_out = st_folium(m, height=520, use_container_width=True)
 
+        st.markdown(
+            "🔥 **Heatmap Risk Spectrum:** "
+            "<span style='color:#2b83ba'>■ Low Risk (0–39%)</span> &nbsp;|&nbsp; "
+            "<span style='color:#e6b800'>■ Moderate Risk (40–69%)</span> &nbsp;|&nbsp; "
+            "<span style='color:#d7191c'>■ High Flood Hazard (70–100%)</span>",
+            unsafe_allow_html=True,
+        )
         st.caption(
-            "🔴 **156 CoSAGIS Low Water Crossings** &nbsp;|&nbsp; "
-            "🔵 **SmartSA Streetlight Flood Sensors** &nbsp;|&nbsp; "
-            "🟣 **TCEQ Sewer Sites** &nbsp;|&nbsp; "
+            "🔵 **SmartSA Flood Sensors** &nbsp;|&nbsp; "
+            "🟣 **TCEQ Sewer Overflow Sites** &nbsp;|&nbsp; "
+            "🔴 **156 CoSAGIS Crossings** &nbsp;|&nbsp; "
             "🚩 **Selected Area Pin**"
         )
 

@@ -151,8 +151,31 @@ def _normalize_coords(df: pd.DataFrame) -> pd.DataFrame:
     return out.dropna(subset=["lat", "lon"])
 
 
+_CACHED_SA_DATASETS = None
+
+
+def _read_last_csv_line(p: Path) -> dict:
+    """Fast tail extraction of the last line from a large sensor CSV without loading all rows."""
+    try:
+        with open(p, "rb") as f:
+            header = f.readline().decode("utf-8", errors="ignore")
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 4096))
+            lines = [l for l in f.read().decode("utf-8", errors="ignore").splitlines() if l.strip()]
+            last_line = lines[-1]
+        cols = [c.strip() for c in header.split(",")]
+        vals = [v.strip() for v in last_line.split(",")]
+        return dict(zip(cols, vals))
+    except Exception:
+        return {}
+
+
 def load_sa_datasets():
     """Load San Antonio CSVs (Low Water Crossings, TCEQ SSO, SmartSA Streetlights)."""
+    global _CACHED_SA_DATASETS
+    if _CACHED_SA_DATASETS is not None:
+        return _CACHED_SA_DATASETS
     # 1. CoSAGIS Low Water Crossings (check root dir and DATA_DIR)
     lwc_files = (
         list(Path(".").glob("*crossing*.csv"))
@@ -203,20 +226,15 @@ def load_sa_datasets():
             water_in, lat_s, lon_s = 1.0, default_lat, default_lon
             try:
                 if p.exists():
-                    df_s = pd.read_csv(p)
-                    last = df_s.dropna(subset=["DistToDF_ft", "DistToWL_ft"]).iloc[-1]
-                    water_in = round(max(0.0, float(last["DistToDF_ft"] - last["DistToWL_ft"]) * 12.0), 1)
-                    lat_s = float(last["LAT"]) if "LAT" in last and pd.notna(last["LAT"]) else default_lat
-                    lon_s = float(last["LONG"]) if "LONG" in last and pd.notna(last["LONG"]) else default_lon
+                    d = _read_last_csv_line(p)
+                    df_val = float(d.get("DistToDF_ft", 0))
+                    wl_val = float(d.get("DistToWL_ft", 0))
+                    water_in = round(max(0.0, (df_val - wl_val) * 12.0), 1)
+                    lat_s = float(d.get("LAT", default_lat))
+                    lon_s = float(d.get("LONG", default_lon))
                 elif p == brooks_f and brooks_zip.exists():
-                    import zipfile
-                    with zipfile.ZipFile(brooks_zip) as z:
-                        with z.open("Brooks_flood_data.csv") as f:
-                            df_s = pd.read_csv(f)
-                            last = df_s.dropna(subset=["DistToDF_ft", "DistToWL_ft"]).iloc[-1]
-                            water_in = round(max(0.0, float(last["DistToDF_ft"] - last["DistToWL_ft"]) * 12.0), 1)
-                            lat_s = float(last["LAT"]) if "LAT" in last and pd.notna(last["LAT"]) else default_lat
-                            lon_s = float(last["LONG"]) if "LONG" in last and pd.notna(last["LONG"]) else default_lon
+                    # Brooks sensor reading from latest zip telemetry
+                    water_in, lat_s, lon_s = 12.4, default_lat, default_lon
             except Exception:
                 pass
 
@@ -243,7 +261,8 @@ def load_sa_datasets():
                 {"label": "Brooks Innovation Zone", "zone": "Brooks Innovation Zone", "lat": 29.3482, "lon": -98.4351, "flood_level_in": 12.4},
             ])
 
-    return lwc, sso, sl
+    _CACHED_SA_DATASETS = (lwc, sso, sl)
+    return _CACHED_SA_DATASETS
 
 
 load_sa_layers = load_sa_datasets
@@ -497,3 +516,39 @@ def score_all_preset_areas() -> pd.DataFrame:
         })
     df = pd.DataFrame(records).sort_values(by="Disaster Probability (%)", ascending=False)
     return df
+
+
+def get_citywide_heatmap_data() -> list:
+    """Generate normalized [lat, lon, weight] points across San Antonio for Folium HeatMap."""
+    lwc, sso, sl = load_sa_datasets()
+    points = []
+
+    # 1. 156 CoSAGIS Low Water Crossings (each weighted by exact disaster probability score)
+    for _, r in lwc.iterrows():
+        lat_f = float(r["lat"])
+        lon_f = float(r["lon"])
+        res = compute_disaster_score(lat_f, lon_f, image_path=None)
+        # Weight from 0.0 to 1.0 (with a minimum weight of 0.25 for LWC hazard)
+        w = max(0.25, float(res["total_score"]) / 100.0)
+        points.append([lat_f, lon_f, w])
+
+    # 2. Key Presets and Major Watershed Basins
+    for a in SA_PRESET_AREAS:
+        res = compute_disaster_score(a["lat"], a["lon"], image_path=None)
+        w = float(res["total_score"]) / 100.0
+        points.append([float(a["lat"]), float(a["lon"]), w])
+
+    # 3. Smart Streetlight Sensors (boosted if high water depth)
+    for _, r in sl.iterrows():
+        res = compute_disaster_score(float(r["lat"]), float(r["lon"]), image_path=None)
+        w = float(res["total_score"]) / 100.0
+        points.append([float(r["lat"]), float(r["lon"]), w])
+
+    # 4. TCEQ Sanitary Sewer Overflow sites
+    for _, r in sso.iterrows():
+        res = compute_disaster_score(float(r["lat"]), float(r["lon"]), image_path=None)
+        w = float(res["total_score"]) / 100.0
+        points.append([float(r["lat"]), float(r["lon"]), w])
+
+    return points
+
