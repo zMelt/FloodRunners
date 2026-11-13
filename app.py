@@ -1,12 +1,12 @@
 import sys
 from pathlib import Path
 
-# 1. Ensure project virtual environment packages (.venv) are accessible
+# 1. Only add local .venv site-packages if running with a matching Python version (e.g. 3.12)
 _project_root = Path(__file__).resolve().parent
-_venv_sites = list((_project_root / ".venv" / "lib").glob("python*/site-packages"))
-for _site in _venv_sites:
-    if _site.exists() and str(_site) not in sys.path:
-        sys.path.insert(0, str(_site))
+_py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
+_venv_site = _project_root / ".venv" / "lib" / _py_ver / "site-packages"
+if _venv_site.exists() and str(_venv_site) not in sys.path:
+    sys.path.insert(0, str(_venv_site))
 
 # 2. Auto-launch with streamlit runner if executed directly with python / in PyCharm
 try:
