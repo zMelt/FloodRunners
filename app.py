@@ -1,23 +1,32 @@
 import sys
+from pathlib import Path
 
-# Auto-launch with streamlit runner if executed directly with python / in PyCharm
+# 1. Ensure project virtual environment packages (.venv) are accessible
+_project_root = Path(__file__).resolve().parent
+_venv_sites = list((_project_root / ".venv" / "lib").glob("python*/site-packages"))
+for _site in _venv_sites:
+    if _site.exists() and str(_site) not in sys.path:
+        sys.path.insert(0, str(_site))
+
+# 2. Auto-launch with streamlit runner if executed directly with python / in PyCharm
 try:
     import streamlit.runtime
     if not streamlit.runtime.exists():
         from streamlit.web import cli as stcli
-        sys.argv = ["streamlit", "run", sys.argv[0]]
+        sys.argv = ["streamlit", "run", str(_project_root / "app.py")]
         sys.exit(stcli.main())
-except Exception:
+except (ImportError, ModuleNotFoundError):
     pass
 
-import uuid
-from datetime import datetime
-from pathlib import Path
-import folium
-import numpy as np
-import pandas as pd
-import streamlit as st
-from streamlit_folium import st_folium
+# 3. Dynamic fallback for folium if running outside venv
+try:
+    import folium
+    from streamlit_folium import st_folium
+except (ImportError, ModuleNotFoundError):
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "folium", "streamlit-folium"])
+    import folium
+    from streamlit_folium import st_folium
 
 from risk_engine import (
     SA_PRESET_AREAS,
