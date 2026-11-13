@@ -29,15 +29,21 @@ def get_vlm_client() -> OpenAI:
 
 
 def get_image_root() -> Path:
-    """Locate the flood image dataset on the server or fall back to local sample_images/."""
+    """Locate the flood image dataset on the server or fall back to local sample_images/ or datasets/."""
     candidates = [
         Path("/tmp/datathon/UTSA-flood-images-complete/images"),
         Path("tmp/datathon/UTSA-flood-images-complete/images"),
         Path("sample_images"),
+        Path("datasets"),
     ]
     for path in candidates:
         if path.exists():
-            return path
+            # Check if directory contains images
+            try:
+                if any(path.rglob("*.jp*g")) or any(path.rglob("*.png")):
+                    return path
+            except Exception:
+                pass
     Path("sample_images").mkdir(exist_ok=True)
     return Path("sample_images")
 
@@ -49,6 +55,50 @@ def _get_clip():
         from sentence_transformers import SentenceTransformer
         _CLIP_MODEL = SentenceTransformer("sentence-transformers/clip-ViT-B-32")
     return _CLIP_MODEL
+
+
+def state_plane_to_wgs84(x_ft: float, y_ft: float) -> tuple:
+    """Convert NAD83 / Texas South Central (ftUS) (EPSG:2278) to WGS84 (lat, lon)."""
+    a = 6378137.0
+    f = 1.0 / 298.257222101
+    e = math.sqrt(2 * f - f * f)
+    to_meters = 1200.0 / 3937.0
+
+    phi1 = math.radians(28 + 23 / 60)
+    phi2 = math.radians(30 + 17 / 60)
+    phi0 = math.radians(27 + 50 / 60)
+    lambda0 = math.radians(-99.0)
+    ef = 1968500.0 * to_meters
+    nf = 13123333.33333333 * to_meters
+
+    m1 = math.cos(phi1) / math.sqrt(1 - e * e * math.sin(phi1) ** 2)
+    m2 = math.cos(phi2) / math.sqrt(1 - e * e * math.sin(phi2) ** 2)
+
+    t1 = math.tan(math.pi / 4 - phi1 / 2) / (((1 - e * math.sin(phi1)) / (1 + e * math.sin(phi1))) ** (e / 2))
+    t2 = math.tan(math.pi / 4 - phi2 / 2) / (((1 - e * math.sin(phi2)) / (1 + e * math.sin(phi2))) ** (e / 2))
+    t0 = math.tan(math.pi / 4 - phi0 / 2) / (((1 - e * math.sin(phi0)) / (1 + e * math.sin(phi0))) ** (e / 2))
+
+    n = math.log(m1 / m2) / math.log(t1 / t2)
+    F = m1 / (n * (t1 ** n))
+    rho0 = a * F * (t0 ** n)
+
+    x_m = x_ft * to_meters
+    y_m = y_ft * to_meters
+    x_rel = x_m - ef
+    y_rel = rho0 - (y_m - nf)
+
+    rho = math.hypot(x_rel, y_rel) * (1 if n > 0 else -1)
+    theta = math.atan2(x_rel, y_rel)
+
+    t = (rho / (a * F)) ** (1.0 / n)
+    lam = theta / n + lambda0
+
+    phi = math.pi / 2 - 2 * math.atan(t)
+    for _ in range(5):
+        con = e * math.sin(phi)
+        phi = math.pi / 2 - 2 * math.atan(t * (((1 - con) / (1 + con)) ** (e / 2)))
+
+    return math.degrees(phi), math.degrees(lam)
 
 
 def _haversine_m(lat1, lon1, lat2, lon2):
@@ -68,51 +118,84 @@ def _normalize_coords(df: pd.DataFrame) -> pd.DataFrame:
     if not lat_col or not lon_col:
         return pd.DataFrame()
     out = df.copy()
-    out["lat"] = pd.to_numeric(out[lat_col], errors="coerce")
-    out["lon"] = pd.to_numeric(out[lon_col], errors="coerce")
+    raw_lat = pd.to_numeric(out[lat_col], errors="coerce")
+    raw_lon = pd.to_numeric(out[lon_col], errors="coerce")
+
+    # If coordinates are in Texas State Plane (ftUS) (e.g. x ~ 2e6, y ~ 1.3e7), project to WGS84
+    if (raw_lon.dropna().abs() > 1000).any() or (raw_lat.dropna().abs() > 1000).any():
+        lats, lons = [], []
+        for x_val, y_val in zip(raw_lon, raw_lat):
+            if pd.notna(x_val) and pd.notna(y_val):
+                lat_wgs, lon_wgs = state_plane_to_wgs84(float(x_val), float(y_val))
+                lats.append(lat_wgs)
+                lons.append(lon_wgs)
+            else:
+                lats.append(np.nan)
+                lons.append(np.nan)
+        out["lat"] = lats
+        out["lon"] = lons
+    else:
+        out["lat"] = raw_lat
+        out["lon"] = raw_lon
+
     return out.dropna(subset=["lat", "lon"])
 
 
 def load_sa_datasets():
-    """Load downloaded San Antonio CSVs from data/ with fallback Bexar County coordinates."""
-    lwc_files = list(DATA_DIR.glob("*crossing*.csv")) + list(DATA_DIR.glob("*lwc*.csv"))
+    """Load San Antonio CSVs (Low Water Crossings, TCEQ SSO, SmartSA Streetlights)."""
+    # 1. CoSAGIS Low Water Crossings (check root dir and DATA_DIR)
+    lwc_files = (
+        list(Path(".").glob("*crossing*.csv"))
+        + list(Path(".").glob("*lwc*.csv"))
+        + list(Path(".").glob("*LowWater*.csv"))
+        + list(DATA_DIR.glob("*crossing*.csv"))
+        + list(DATA_DIR.glob("*lwc*.csv"))
+    )
     if lwc_files:
         lwc = _normalize_coords(pd.read_csv(lwc_files[0]))
         name_col = next((c for c in lwc.columns if "name" in c.lower() or "street" in c.lower()), None)
         lwc["label"] = lwc[name_col] if name_col else "CoSAGIS Low Water Crossing"
+        lwc["name"] = lwc["label"]
     else:
         lwc = pd.DataFrame([
-            {"label": "Leon Creek @ Hausman Rd", "lat": 29.5518, "lon": -98.6184},
-            {"label": "Salado Creek @ Eisenhauer Rd", "lat": 29.4932, "lon": -98.4231},
-            {"label": "Alazan Creek @ W Commerce St", "lat": 29.4275, "lon": -98.5236},
-            {"label": "Martinez Creek @ Fredericksburg Rd", "lat": 29.4521, "lon": -98.5162},
+            {"label": "Leon Creek @ Hausman Rd", "name": "Leon Creek @ Hausman Rd", "lat": 29.5518, "lon": -98.6184},
+            {"label": "Salado Creek @ Eisenhauer Rd", "name": "Salado Creek @ Eisenhauer Rd", "lat": 29.4932, "lon": -98.4231},
+            {"label": "Alazan Creek @ W Commerce St", "name": "Alazan Creek @ W Commerce St", "lat": 29.4275, "lon": -98.5236},
+            {"label": "Martinez Creek @ Fredericksburg Rd", "name": "Martinez Creek @ Fredericksburg Rd", "lat": 29.4521, "lon": -98.5162},
         ])
 
-    sso_files = list(DATA_DIR.glob("*sewer*.csv")) + list(DATA_DIR.glob("*sso*.csv"))
+    # 2. TCEQ Sanitary Sewer Overflows
+    sso_files = list(DATA_DIR.glob("*sewer*.csv")) + list(DATA_DIR.glob("*sso*.csv")) + list(Path(".").glob("*sso*.csv"))
     if sso_files:
         sso = _normalize_coords(pd.read_csv(sso_files[0]))
         sso["label"] = "TCEQ Historical Sewer Overflow"
+        sso["name"] = sso["label"]
     else:
         sso = pd.DataFrame([
-            {"label": "San Pedro Creek Lift Station SSO", "lat": 29.4189, "lon": -98.4981},
-            {"label": "Apache Creek Sewer Main SSO", "lat": 29.4115, "lon": -98.5320},
-            {"label": "Brooks Innovation Zone Main SSO", "lat": 29.3468, "lon": -98.4385},
+            {"label": "San Pedro Creek Lift Station SSO", "name": "San Pedro Creek Lift Station SSO", "lat": 29.4189, "lon": -98.4981},
+            {"label": "Apache Creek Sewer Main SSO", "name": "Apache Creek Sewer Main SSO", "lat": 29.4115, "lon": -98.5320},
+            {"label": "Brooks Innovation Zone Main SSO", "name": "Brooks Innovation Zone Main SSO", "lat": 29.3468, "lon": -98.4385},
         ])
 
-    sl_files = list(DATA_DIR.glob("*street*.csv")) + list(DATA_DIR.glob("*light*.csv"))
+    # 3. SmartSA Streetlight Sensors
+    sl_files = list(DATA_DIR.glob("*street*.csv")) + list(DATA_DIR.glob("*light*.csv")) + list(Path(".").glob("*street*.csv"))
     if sl_files:
         sl = _normalize_coords(pd.read_csv(sl_files[0]))
         sl["label"] = "SmartSA Streetlight Sensor"
+        sl["zone"] = sl["label"]
         flood_col = next((c for c in sl.columns if "flood" in c.lower() or "water" in c.lower()), None)
         sl["flood_level_in"] = pd.to_numeric(sl[flood_col], errors="coerce").fillna(0.0) if flood_col else 1.2
     else:
         sl = pd.DataFrame([
-            {"label": "Downtown Innovation Zone", "lat": 29.4241, "lon": -98.4936, "flood_level_in": 1.8},
-            {"label": "Medical Center Innovation Zone", "lat": 29.5074, "lon": -98.5752, "flood_level_in": 0.0},
-            {"label": "Brooks Innovation Zone", "lat": 29.3482, "lon": -98.4351, "flood_level_in": 3.4},
+            {"label": "Downtown Innovation Zone", "zone": "Downtown Innovation Zone", "lat": 29.4241, "lon": -98.4936, "flood_level_in": 1.8},
+            {"label": "Medical Center Innovation Zone", "zone": "Medical Center Innovation Zone", "lat": 29.5074, "lon": -98.5752, "flood_level_in": 0.0},
+            {"label": "Brooks Innovation Zone", "zone": "Brooks Innovation Zone", "lat": 29.3482, "lon": -98.4351, "flood_level_in": 3.4},
         ])
 
     return lwc, sso, sl
+
+
+load_sa_layers = load_sa_datasets
 
 
 def encode_resized_image(image_path: str, max_dim: int = 1024) -> str:
@@ -269,3 +352,97 @@ def compute_disaster_score(lat: float, lon: float, image_path: str = None) -> di
         "sewage_warning": sewage_alert,
         "nearest_sso": f"{sso_name} ({int(min_sso)}m)",
     }
+
+
+SA_PRESET_AREAS = [
+    {
+        "name": "Alazan Creek @ W Commerce St",
+        "zone": "West Side / Historic Flood Basin",
+        "lat": 29.4275,
+        "lon": -98.5236,
+        "description": "Historic flash flood basin near downtown with high runoff risk.",
+    },
+    {
+        "name": "Leon Creek @ Hausman Rd",
+        "zone": "Northwest / UTSA Corridor",
+        "lat": 29.5518,
+        "lon": -98.6184,
+        "description": "Critical low water crossing near UTSA and Loop 1604.",
+    },
+    {
+        "name": "Salado Creek @ Eisenhauer Rd",
+        "zone": "Northeast Corridor",
+        "lat": 29.4932,
+        "lon": -98.4231,
+        "description": "Major urban creek basin subject to rapid surge from upstream hills.",
+    },
+    {
+        "name": "Olmos Basin / Olmos Dam",
+        "zone": "Midtown / Central Retention Basin",
+        "lat": 29.4715,
+        "lon": -98.4776,
+        "description": "Primary flood control reservoir protecting downtown San Antonio.",
+    },
+    {
+        "name": "Downtown River Walk & San Pedro Creek",
+        "zone": "Downtown Innovation Zone",
+        "lat": 29.4241,
+        "lon": -98.4936,
+        "description": "Urban core monitored by SmartSA smart streetlight flood sensors.",
+    },
+    {
+        "name": "Medical Center Innovation Zone",
+        "zone": "South Texas Medical Center",
+        "lat": 29.5074,
+        "lon": -98.5752,
+        "description": "Critical healthcare corridor with SmartSA environmental sensors.",
+    },
+    {
+        "name": "Brooks Innovation Zone",
+        "zone": "South Side / Mission Reach",
+        "lat": 29.3482,
+        "lon": -98.4351,
+        "description": "South San Antonio urban revitalization zone with active flood telemetry.",
+    },
+    {
+        "name": "Apache Creek @ Elmendorf Lake",
+        "zone": "West Side / Our Lady of the Lake",
+        "lat": 29.4289,
+        "lon": -98.5398,
+        "description": "West side drainage creek with historical sewer overflow records.",
+    },
+    {
+        "name": "Martinez Creek @ Fredericksburg Rd",
+        "zone": "Deco District / Midtown",
+        "lat": 29.4521,
+        "lon": -98.5162,
+        "description": "Dense urban intersection near low water crossing.",
+    },
+    {
+        "name": "Espada Dam & Mission Espada",
+        "zone": "South River Corridor",
+        "lat": 29.3512,
+        "lon": -98.4725,
+        "description": "Historic aqueduct and river bend in southern Bexar County.",
+    },
+]
+
+
+def score_all_preset_areas() -> pd.DataFrame:
+    """Compute and compare probability scores across all major San Antonio zones."""
+    records = []
+    for area in SA_PRESET_AREAS:
+        res = compute_disaster_score(area["lat"], area["lon"], image_path=None)
+        records.append({
+            "Area Name": area["name"],
+            "Zone / Region": area["zone"],
+            "Disaster Probability (%)": res["total_score"],
+            "Risk Tier": res["risk_tier"],
+            "Nearest Low Water Crossing": res["nearest_lwc"],
+            "Nearest Streetlight Sensor": res["nearest_sensor"],
+            "Sewage Contamination Alert": "⚠️ Alert" if res["sewage_warning"] else "Normal",
+            "Latitude": area["lat"],
+            "Longitude": area["lon"],
+        })
+    df = pd.DataFrame(records).sort_values(by="Disaster Probability (%)", ascending=False)
+    return df
