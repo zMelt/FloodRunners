@@ -1,4 +1,16 @@
 """Citizen UI Frontend - 311SA Flood & Hazard Guard."""
+import sys
+
+# Auto-launch with streamlit runner if executed directly with python / in PyCharm
+try:
+    import streamlit.runtime
+    if not streamlit.runtime.exists():
+        from streamlit.web import cli as stcli
+        sys.argv = ["streamlit", "run", sys.argv[0]]
+        sys.exit(stcli.main())
+except Exception:
+    pass
+
 import uuid
 from datetime import datetime
 from pathlib import Path
