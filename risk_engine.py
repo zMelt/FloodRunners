@@ -8,7 +8,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from PIL import Image
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 
 from vlm_config import BASE_URL, API_KEY, MODEL
 
@@ -20,11 +23,18 @@ _CLIENT = None
 _CLIP_MODEL = None
 
 
-def get_vlm_client() -> OpenAI:
+def get_vlm_client():
     """Lazy-initialize the OpenAI client pointing to the USAA GB10 server."""
     global _CLIENT
     if _CLIENT is None:
-        _CLIENT = OpenAI(base_url=BASE_URL, api_key=API_KEY, timeout=120)
+        try:
+            from openai import OpenAI
+            _CLIENT = OpenAI(base_url=BASE_URL, api_key=API_KEY, timeout=120)
+        except ImportError:
+            raise ImportError(
+                "The 'openai' package is required to connect to the USAA GB10 VLM server. "
+                "Please run: pip install openai"
+            )
     return _CLIENT
 
 
