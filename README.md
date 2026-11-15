@@ -12,6 +12,7 @@ Selected as a winner for the inaugural **Dell Social Impact AI Datathon**, **Flo
 
 ## 📌 Table of Contents
 - [Executive Overview & Social Impact](#-executive-overview--social-impact)
+- [Application Previews](#-application-previews)
 - [System Architecture & Tech Stack](#-system-architecture--tech-stack)
 - [Mathematical Formulation & Risk Scoring](#-mathematical-formulation--risk-scoring)
 - [Key Features](#-key-features)
@@ -33,6 +34,22 @@ San Antonio and Central Texas sit in **"Flash Flood Alley"**, recognized as one 
 **FloodRunners** unifies these disparate data streams into a single interactive intelligence platform:
 - **For Citizens**: Point-and-click flood hazard assessment, pre-trip navigation checks across 156 low-water crossings, and immediate 311 photo reporting.
 - **For First Responders & 311 Dispatch**: Automated risk scoring, real-time Folium heatmaps, bio-hazard sewer contamination warnings, and prioritized ticket queues.
+
+---
+
+## 🖥️ Application Previews
+
+### 1. 📍 Area Risk Inspector & Interactive Disaster Heatmap
+The primary operations view features an interactive Folium HeatMap layer visualizing real-time disaster probability density across 172+ San Antonio locations. Users can select from 10 high-risk watershed presets, search all 156 CoSAGIS low-water crossings, or click anywhere on the map to compute an instant multi-factor disaster probability score with full telemetry breakdowns.
+
+![Area Risk Inspector and Disaster Heatmap](assets/screenshots/area_risk_inspector.png)
+
+---
+
+### 2. 📊 Citywide Risk Leaderboard
+The cross-watershed leaderboard automatically aggregates and ranks all key San Antonio corridors by disaster probability percentage. It highlights real-time sewage contamination hazard alerts, identifies the nearest low-water crossing, and displays active SmartSA streetlight sensor readings for municipal dispatch and public safety monitoring.
+
+![Citywide Risk Leaderboard](assets/screenshots/citywide_leaderboard.png)
 
 ---
 
@@ -170,6 +187,10 @@ $$S_{total} = \begin{cases}
 FloodRunners/
 ├── .streamlit/
 │   └── config.toml                  # Streamlit theme & port configuration
+├── assets/
+│   └── screenshots/
+│       ├── area_risk_inspector.png  # Interactive Folium Heatmap & Scorecard preview
+│       └── citywide_leaderboard.png # Cross-watershed risk leaderboard preview
 ├── app.py                           # Primary Streamlit Dashboard (Heatmap, Leaderboard, 311)
 ├── Citizen_UI.py                    # Citizen Portal Interface
 ├── risk_engine.py                   # Core Geospatial, Sensor, and VLM Risk Engine
