@@ -6,7 +6,7 @@
 [![NVIDIA GB10](https://img.shields.io/badge/Powered%20By-NVIDIA%20DGX%20Spark%20GB10-76B900.svg)](https://www.nvidia.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Developed for the **Dell Social Impact AI Datathon**, **FloodRunners (311SA Flood & Hazard Guard)** is an end-to-end multi-modal flood risk intelligence platform designed for the City of San Antonio and Bexar County. It fuses real-time IoT municipal sensor telemetry, 156 official CoSAGIS low-water crossings, TCEQ sanitary sewer overflow hazard tracking, and zero-shot vision AI on an **NVIDIA DGX Spark / Dell Pro Max GB10** workstation to calculate explainable disaster probability scores ($0\% - 100\%$) across San Antonio watersheds.
+Selected as a winner for the inaugural **Dell Social Impact AI Datathon**, **FloodRunners (311SA Flood & Hazard Guard)** is an end-to-end multi-modal flood risk intelligence platform designed for the City of San Antonio and Bexar County. It fuses real-time IoT municipal sensor telemetry, 156 official CoSAGIS low-water crossings, TCEQ sanitary sewer overflow hazard tracking, and zero-shot vision AI on an **NVIDIA DGX Spark / Dell Pro Max GB10** workstation to calculate explainable disaster probability scores ($0\% - 100\%$) across San Antonio watersheds.
 
 ---
 
