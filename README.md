@@ -1,155 +1,262 @@
-# FloodRunners
-Flood Analysis Probability for San Antonio
+# 🌊 FloodRunners: 311SA Flood & Hazard Guard
+### Real-Time San Antonio Flash Flood Probability & Infrastructure Intelligence System
 
-## GB10 Competition: Additional Information (e.g., running on local machine)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Streamlit App](https://img.shields.io/badge/Streamlit-1.30+-FF4B4B.svg)](https://streamlit.io)
+[![NVIDIA GB10](https://img.shields.io/badge/Powered%20By-NVIDIA%20DGX%20Spark%20GB10-76B900.svg)](https://www.nvidia.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Materials for GB10 hackathons and student competitions. Follow these steps to prepare your computer for the Python notebooks.
+Developed for the **UTSA / USAA Social Impact AI Datathon**, **FloodRunners (311SA Flood & Hazard Guard)** is an end-to-end multi-modal flood risk intelligence platform designed for the City of San Antonio and Bexar County. It fuses real-time IoT municipal sensor telemetry, 156 official CoSAGIS low-water crossings, TCEQ sanitary sewer overflow hazard tracking, and zero-shot vision AI on an **NVIDIA DGX Spark / Dell Pro Max GB10** workstation to calculate explainable disaster probability scores ($0\% - 100\%$) across San Antonio watersheds.
 
-You will install:
+---
 
-- **Anaconda:** includes Python and tools for managing your project’s software.
-- **The OpenAI Python package:** lets your Python code send questions and images to an AI server. These workshop notebooks use it to connect to a GB10 server running Qwen.
+## 📌 Table of Contents
+- [Executive Overview & Social Impact](#-executive-overview--social-impact)
+- [System Architecture & Tech Stack](#-system-architecture--tech-stack)
+- [Mathematical Formulation & Risk Scoring](#-mathematical-formulation--risk-scoring)
+- [Key Features](#-key-features)
+- [Municipal & State Datasets](#-municipal--state-datasets)
+- [Repository Structure](#-repository-structure)
+- [Quickstart & Installation](#-quickstart--installation)
+- [Configuration & VLM Setup](#-configuration--vlm-setup)
+- [Hackathon Pitch & Use Cases](#-hackathon-pitch--use-cases)
 
-For an overview of the event, download [the GB10 Hackathon primer](gb10-hackathon-primer-v4.html) and open the HTML file in your browser.
+---
 
-## 1. Install Anaconda
+## 🌍 Executive Overview & Social Impact
 
-1. Go to the [official Anaconda download page](https://www.anaconda.com/download) and choose **Anaconda Distribution**.
-2. Choose the installer for your computer. On a Mac with an M-series chip, choose **Apple Silicon / ARM64**. You can check your chip under **Apple menu → About This Mac**.
-3. Install Anaconda:
-   - **Windows:** open the downloaded `.exe` file. Choose **Just Me**, keep the default installation location, and leave **Add Anaconda to my PATH** unchecked.
-   - **macOS:** open the downloaded `.pkg` file and follow the installer’s instructions.
-   - **Linux:** follow the [official Linux installation instructions](https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html) to run the downloaded `.sh` installer. If asked to initialize conda, choose **yes**.
-4. After installation, open **Anaconda Prompt** from the Start menu on Windows, or open a new **Terminal** window on macOS or Linux.
-5. Type this command and press **Enter**:
+San Antonio and Central Texas sit in **"Flash Flood Alley"**, recognized as one of the most flash-flood-prone regions in North America due to steep Hill Country limestone topography, thin soils with poor absorption, and severe precipitation systems. In San Antonio:
+1. **Low-Water Crossings (LWCs)** quickly become deadly traps for drivers during rapid water surges.
+2. **Sanitary Sewer Overflows (SSOs)** occur when floodwaters infiltrate wastewater systems, contaminating street runoffs with hazardous bio-pathogens.
+3. **Disjointed Telemetry**: Citizens, emergency services (SAFD/Bexar County OEM), and 311 municipal dispatchers previously had to cross-reference static maps, weather radars, and unverified phone calls.
 
-   ```sh
-   conda --version
-   ```
+**FloodRunners** unifies these disparate data streams into a single interactive intelligence platform:
+- **For Citizens**: Point-and-click flood hazard assessment, pre-trip navigation checks across 156 low-water crossings, and immediate 311 photo reporting.
+- **For First Responders & 311 Dispatch**: Automated risk scoring, real-time Folium heatmaps, bio-hazard sewer contamination warnings, and prioritized ticket queues.
 
-   A result such as `conda 26.x.x` means conda is available. Your version number may differ.
+---
 
-Need more help? See the official installation guides for [Windows](https://docs.conda.io/projects/conda/en/latest/user-guide/install/windows.html) and [macOS](https://docs.conda.io/projects/conda/en/latest/user-guide/install/macos.html).
+## 🛠️ System Architecture & Tech Stack
 
-**Older Intel Macs:** Anaconda has ended new Intel Mac package builds. See [Anaconda’s Intel Mac support notice](https://www.anaconda.com/blog/intel-mac-package-support-deprecation) and ask the organizer for a compatible setup if needed.
-
-## 2. Install the OpenAI Python package
-
-Run the following commands in **Anaconda Prompt or Terminal**, one line at a time. Do not enter them inside Python or a notebook cell.
-
-First, create a separate environment for this workshop. An environment keeps this project’s Python and packages together.
-
-```sh
-conda create --name gb10 python=3.11 pip
-conda activate gb10
+```
+                     ┌──────────────────────────────────────────────┐
+                     │          CROWDSOURCED CITIZEN DATA           │
+                     │  • Geotagged Photos (Street/Creek/Inlet)     │
+                     │  • Citizen 311 Emergency Reports             │
+                     └──────────────────────┬───────────────────────┘
+                                            │
+                                            ▼
+┌─────────────────────────────────┐   ┌───────────────────────────────┐
+│     MUNICIPAL TELEMETRY & GIS   │   │     NVIDIA GB10 WORKSTATION   │
+│  • CoSAGIS 156 LW Crossings     │   │  • Qwen3-VL Vision-Language   │
+│  • SmartSA IoT Streetlight Data │   │    Model (8B-Instruct)        │
+│  • TCEQ Sanitary Sewer Overflows│   │  • Zero-Shot Flood Analysis   │
+└────────────────┬────────────────┘   └───────────────┬───────────────┘
+                 │                                    │
+                 └──────────────────┬─────────────────┘
+                                    ▼
+       ┌─────────────────────────────────────────────────────────────┐
+       │                 GEOSPATIAL RISK ENGINE                      │
+       │  • Lambert Conformal Conic Projection (EPSG:2278 -> WGS84)  │
+       │  • Haversine Geodesic Distance Matrix                       │
+       │  • Exponential Decay Distance Modeling                      │
+       │  • Weighted Multi-Factor Disaster Probability Formulation   │
+       └────────────────────────────┬────────────────────────────────┘
+                                    │
+                                    ▼
+       ┌─────────────────────────────────────────────────────────────┐
+       │                 INTERACTIVE WEB DASHBOARD                   │
+       │  • Streamlit Multi-Tab Operations Console                   │
+       │  • Folium HeatMap Layer (172+ San Antonio Hazard Points)    │
+       │  • Citywide Cross-Watershed Leaderboard                     │
+       │  • 311 Citizen Hazard Dispatch Queue                        │
+       └─────────────────────────────────────────────────────────────┘
 ```
 
-If conda asks `Proceed ([y]/n)?`, type `y` and press **Enter**. Your prompt should now start with `(gb10)`.
+- **Frontend & Visualization**: [Streamlit](https://streamlit.io), [Folium](https://python-visualization.github.io/folium/) with Leaflet.js `HeatMap` plugin, [Streamlit-Folium](https://github.com/randyzwitch/streamlit-folium).
+- **Vision-Language Model (VLM)**: `Qwen/Qwen3-VL-8B-Instruct` served on Dell Pro Max GB10 via vLLM / GPUStack OpenAI-compatible API (`http://10.246.100.230/v1`), with local Mac/CPU fallback via CLIP ViT-B/32 (`sentence-transformers`).
+- **Geospatial & Mathematical Computations**: `NumPy`, `SciPy`, `Pandas`, custom EPSG:2278 ellipsoidal projection algorithms, and spherical Haversine formulas.
+- **Data Engineering**: Integration of City of San Antonio Open Data (CoSAGIS, SmartSA) and Texas Commission on Environmental Quality (TCEQ).
 
-Install the OpenAI package:
+---
 
-```sh
-python -m pip install "openai>=1,<4"
+## 📐 Mathematical Formulation & Risk Scoring
+
+### 1. Coordinate Transformation (EPSG:2278 $\rightarrow$ WGS84)
+The City of San Antonio's official GIS datasets (`LowWaterCrossings_data.csv`) publish spatial coordinates in **NAD83 / Texas South Central (ftUS) (EPSG:2278)**. The risk engine converts these into global **WGS84 Latitude/Longitude** via the Lambert Conformal Conic 2SP projection formulas:
+
+$$m_i = \frac{\cos \phi_i}{\sqrt{1 - e^2 \sin^2 \phi_i}}, \quad t_i = \frac{\tan(\pi/4 - \phi_i/2)}{\left(\frac{1 - e \sin \phi_i}{1 + e \sin \phi_i}\right)^{e/2}}$$
+
+$$n = \frac{\ln(m_1 / m_2)}{\ln(t_1 / t_2)}, \quad F = \frac{m_1}{n \, t_1^n}, \quad \rho = \sqrt{(x - x_0)^2 + (\rho_0 - (y - y_0))^2}$$
+
+$$\lambda = \frac{\theta}{n} + \lambda_0, \quad \phi = \frac{\pi}{2} - 2 \arctan(t) \quad \text{(solved iteratively)}$$
+
+### 2. Geodesic Proximity Decay
+For any inspected point $(\phi_1, \lambda_1)$ and hazard point $(\phi_2, \lambda_2)$, geodesic distance $d$ is computed using the Great-Circle Haversine formula:
+
+$$d = 2 R \arcsin \left( \sqrt{\sin^2\left(\frac{\Delta \phi}{2}\right) + \cos \phi_1 \cos \phi_2 \sin^2\left(\frac{\Delta \lambda}{2}\right)} \right)$$
+
+Hazard impacts decay exponentially with distance:
+- **Low Water Crossing Score ($S_{lwc}$)**:
+  $$S_{lwc}(d) = 100 \cdot \exp\left(-\frac{d}{800}\right)$$
+- **Smart Streetlight Water Level Score ($S_{sensor}$)**:
+  $$S_{sensor}(d, \Delta h) = \min(100, 20 + \Delta h \cdot 80) \cdot \exp\left(-\frac{d}{1200}\right)$$
+- **Sanitary Sewer Overflow Hazard ($S_{sso}$)**:
+  $$S_{sso}(d) = 100 \cdot \exp\left(-\frac{d}{1500}\right)$$
+
+### 3. Total Disaster Probability Score ($S_{total}$)
+When a citizen attaches a photo, the Qwen3-VL VLM assesses the visual evidence (water level, current speed, vehicle impassability) to generate a vision confidence score $S_{vlm} \in [0, 100]$. The components are fused into a normalized total disaster score:
+
+$$S_{total} = \begin{cases} 
+0.40 \, S_{lwc} + 0.35 \, S_{sensor} + 0.25 \, S_{sso} & \text{without photo} \\
+0.30 \, S_{lwc} + 0.25 \, S_{sensor} + 0.20 \, S_{sso} + 0.25 \, S_{vlm} & \text{with photo}
+\end{cases}$$
+
+### 4. Risk Tiers
+| Score Range | Risk Tier | Actionable Protocol |
+| :---: | :---: | :--- |
+| **70% – 100%** | 🚨 **High / Extreme Hazard** | Road closed, immediate flash flood warning, deploy barricades, avoid area. |
+| **40% – 69%** | ⚠️ **Elevated Hazard** | High caution, rising creek levels, water over roadway possible. |
+| **0% – 39%** | 🟢 **Low / Nominal** | Normal drainage flow, low-water crossing dry or passable. |
+
+---
+
+## ✨ Key Features
+
+1. **Interactive Folium Heatmap**:
+   - Citywide visual heatmap showing disaster score density across San Antonio.
+   - 156 CoSAGIS Low Water Crossing markers with street name popups.
+   - SmartSA streetlight flood sensor markers displaying real-time depth telemetry.
+   - TCEQ sanitary sewer overflow hazard markers warning of bio-contamination.
+   - Live marker pin for the currently inspected location.
+
+2. **Multi-Mode Location Selection**:
+   - **Preset Watershed Zones**: 10 high-risk San Antonio corridors (Olmos Basin & Dam, Leon Creek @ Hausman/UTSA, Salado Creek @ Eisenhauer, San Pedro Creek River Walk, Medical Center, Brooks City-Base, Apache Creek @ Elmendorf Lake, Martinez Creek, Mission Espada).
+   - **Searchable Low Water Crossings**: All 156 official CoSAGIS crossings with auto-lookup and coordinate projection.
+   - **Point-and-Click Map Inspection**: Click anywhere on the map or input custom coordinates.
+
+3. **Multimodal Qwen3-VL Vision AI**:
+   - Direct image upload (`.jpg`, `.jpeg`, `.png`, `.webp`).
+   - Analyzes street flooding, submerged curbs, stormwater inlet debris, and water velocity.
+   - Provides structured JSON analysis and elevates disaster probability accordingly.
+
+4. **Citywide Risk Leaderboard**:
+   - Instant multi-zone comparative matrix ranking all major San Antonio corridors by risk score.
+   - Visual badges for sewage contamination alerts, nearest crossings, and active sensors.
+
+5. **311 Citizen Hazard Dispatch Queue**:
+   - Citizens can submit live emergency flood reports with photos and descriptions.
+   - Real-time municipal dispatch table with ticket IDs, status indicators, and timestamps.
+
+---
+
+## 📊 Municipal & State Datasets
+
+| Dataset | Source | Details | File in Repo |
+| :--- | :--- | :--- | :--- |
+| **Low Water Crossings** | City of San Antonio (CoSAGIS) | 156 official low-water crossings with Texas State Plane coordinates (EPSG:2278). | [`LowWaterCrossings_data.csv`](LowWaterCrossings_data.csv) |
+| **Downtown Flood Telemetry** | SmartSA Innovation Zone | Smart streetlight ultrasonic flood sensors in the Downtown corridor. | [`DT_flood_data.csv`](DT_flood_data.csv) |
+| **Medical Center Sensors** | SmartSA Innovation Zone | Smart streetlight flood sensors around the South Texas Medical Center. | [`Medical_flood_data.csv`](Medical_flood_data.csv) |
+| **Brooks Sensor Telemetry** | SmartSA Innovation Zone | Smart streetlight environmental and water depth sensors in the Brooks area. | [`Brooks_flood_data.csv.zip`](Brooks_flood_data.csv.zip) |
+| **Citywide Streetlight Sensors** | SmartSA Open Data | Historical and multi-zone pilot streetlight sensor telemetry across San Antonio. | [`SAStreetlight_Sensor_Data.csv.zip`](SAStreetlight_Sensor_Data.csv.zip) |
+| **Sanitary Sewer Overflows (SSO)** | TCEQ (Texas Commission on Environmental Quality) | Historical and active unauthorized wastewater discharge records in Bexar County. | [`Texas_Commission_on_Environmental_Quality_-_Sanitary_Sewer_Overflows_(SSO)_20261113.csv.zip`](Texas_Commission_on_Environmental_Quality_-_Sanitary_Sewer_Overflows_(SSO)_20261113.csv.zip) |
+| **Sensor Data Dictionary** | City of San Antonio | Definitions and metadata for SmartSA streetlight environmental telemetry. | [`datadictionary-flood.xlsx`](datadictionary-flood.xlsx) |
+
+---
+
+## 📂 Repository Structure
+
+```
+FloodRunners/
+├── .streamlit/
+│   └── config.toml                  # Streamlit theme & port configuration
+├── app.py                           # Primary Streamlit Dashboard (Heatmap, Leaderboard, 311)
+├── Citizen_UI.py                    # Citizen Portal Interface
+├── risk_engine.py                   # Core Geospatial, Sensor, and VLM Risk Engine
+├── citizen_risk_engine.py           # Compatibility wrapper
+├── vlm_config.py                    # NVIDIA GB10 / Qwen3-VL connection settings
+├── FLOODALERT.ipynb                 # Datathon experimentation & validation notebook
+├── requirements.txt                 # Clean, pinned Python dependencies
+├── UTSA_more_data.md                # Municipal dataset documentation & API references
+├── datadictionary-flood.xlsx        # City of San Antonio sensor schema dictionary
+├── LowWaterCrossings_data.csv       # CoSAGIS 156 Low Water Crossings (EPSG:2278)
+├── DT_flood_data.csv                # Downtown Innovation Zone flood sensors
+├── Medical_flood_data.csv           # Medical Center flood sensors
+├── Brooks_flood_data.csv.zip        # Brooks Innovation Zone sensor telemetry
+├── SAStreetlight_Sensor_Data.csv.zip# Full SmartSA pilot sensor dataset
+├── Texas_..._SSO_20261113.csv.zip   # TCEQ Sanitary Sewer Overflow incident data
+├── LICENSE                          # MIT License
+└── README.md                        # Project documentation
 ```
 
-This version range matches this project’s requirements. Using `python -m pip` installs the package into the Python environment you just activated.
+---
 
-Check that it installed correctly:
+## 🚀 Quickstart & Installation
 
-```sh
-python -c "import openai; print('OpenAI package installed:', openai.__version__)"
+### 1. Clone the Repository
+```bash
+git clone https://github.com/zMelt/FloodRunners.git
+cd FloodRunners
 ```
 
-You should see a version number without an error. This check does not contact an AI server or require an API key. See the [official OpenAI Python package documentation](https://developers.openai.com/api/reference/python) for more details.
-
-## 3. Install the notebook tools and open the project
-
-Download the full project folder from the repository or use the copy supplied by your organizer. If you download a ZIP file, extract it first. Keep the notebooks, Python files, and datasets together.
-
-In the same prompt or terminal, use `cd` to open the folder containing this README and `requirements.txt`. Replace the example path below with your actual folder path; keep the quotation marks if it contains spaces.
-
-Windows example:
-
-```bat
-cd /d "C:\Users\YourName\Downloads\GB10competition"
+### 2. Create and Activate a Python Environment
+```bash
+# Using Python 3.11 or 3.12
+python3 -m venv .venv
+source .venv/bin/activate    # On Windows: .venv\Scripts\activate
 ```
 
-macOS or Linux example:
-
-```sh
-cd "$HOME/Downloads/GB10competition"
+### 3. Install Dependencies
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-Then install the workshop packages and start JupyterLab:
+### 4. Run the Streamlit Application
+You can launch the web application directly:
+```bash
+streamlit run app.py
+```
+*(Or simply run `python3 app.py`, which includes built-in auto-bootstrapping for Streamlit).*
 
-```sh
-python -m pip install -r requirements.txt
-python -m jupyterlab
+Open your browser to `http://localhost:8501`.
+
+---
+
+## ⚙️ Configuration & VLM Setup
+
+The vision AI engine connects by default to the **USAA / UTSA NVIDIA GB10 workstation** running `Qwen3-VL-8B-Instruct`. Connection parameters are defined in [`vlm_config.py`](vlm_config.py):
+
+```python
+BASE_URL = "http://10.246.100.230/v1"
+MODEL = "qwen3-vl-8b-instruct"
+API_KEY = "usaadatathon"
 ```
 
-`requirements.txt` installs JupyterLab, the OpenAI package, and the image and data tools used in the notebooks. It is fine if the OpenAI package is already installed.
+- **Custom VLM Endpoint**: To point to a local vLLM or Ollama instance, update `BASE_URL` in `vlm_config.py` or export standard OpenAI environment variables:
+  ```bash
+  export OPENAI_BASE_URL="http://localhost:8000/v1"
+  export OPENAI_API_KEY="your-key"
+  ```
+- **Offline / Local Fallback**: If running without access to the GB10 server, set `USE_GB10_VLM=false` to use the embedded local CLIP ViT model:
+  ```bash
+  export USE_GB10_VLM="false"
+  ```
 
-JupyterLab should open in your browser. If it does not, copy the local URL shown in your terminal into your browser. Keep the terminal open while working.
+---
 
-Double-click a notebook (`.ipynb`) in JupyterLab. If asked to choose a kernel, select **Python 3 (ipykernel)**. A kernel is the Python process that runs your notebook. Run cells from top to bottom with **Shift + Enter**.
+## 🏆 Hackathon Pitch & Use Cases
 
-## 4. Connect to the GB10 server
+### 1. Civic Safety & Smart City Integration (311SA)
+Instead of relying on delayed citizen telephone calls, San Antonio 311 can triage incoming reports in real time. The model correlates submitted street photos with live sensor telemetry and low-water crossing proximity to flag false alarms and prioritize critical life-safety hazards.
 
-**Installing the OpenAI package does not install or start an AI model.** The model runs on the GB10 server provided for the workshop. Your computer must be able to reach that server; use the network or VPN specified by your organizer.
+### 2. Public Health & Biohazard Early Warning
+Flash floods are hazardous not only due to drowning risks, but also due to sewage contamination. By integrating TCEQ Sanitary Sewer Overflow (SSO) data, FloodRunners warns citizens and emergency responders if receding floodwaters contain untreated wastewater.
 
-Ask the organizer for the server address, model name, and any required server API key.
+### 3. First Responder Dispatch & Resource Allocation
+San Antonio Fire Department (SAFD) and Public Works can monitor the **Citywide Risk Leaderboard** to deploy flood barricades, close roadways, and stage high-water rescue vehicles *before* low water crossings become fully submerged.
 
-- For the three Texas flood notebooks (`01_`, `02_`, and `03_`), update [vlm_config.py](vlm_config.py): `BASE_URL` is the supplied server URL ending in `/v1`, `MODEL` is the supplied model name, and `API_KEY` is the supplied server key. Use `NONE` only if the organizer confirms authentication is disabled.
-- For `1_Introduction_to_Vision_Prompting.ipynb` and `2_Basic_Vision_Prompt_Structure.ipynb`, update the connection settings inside the notebook. Check each cell that creates an `OpenAI` client.
-- Restart the notebook kernel after changing connection settings, then run the cells again.
+---
 
-You do not need an OpenAI account or OpenAI API key to use the workshop’s GB10 server. If you are doing a separate exercise with OpenAI’s hosted service, follow the [official OpenAI quickstart](https://developers.openai.com/api/docs/quickstart) for account and API key setup. Keep real API keys private and out of shared notebooks.
-
-## Workshop files you may also need
-
-- **Introductory notebooks:** some cells import a helper named `utils`. This checkout does not include `utils.py`; get the workshop helper file from the organizer and place it beside the notebooks if those cells report a missing `utils` module.
-- **Texas flood notebooks:** get the workshop data from the organizer. The helper expects a `Texas_Flood_Student_Data` folder beside the project folder, containing `image_metadata.csv`, the images, and `observations.sqlite` for the weather exercise. Keep the supplied data layout intact.
-
-Example folder layout for the Texas flood exercises:
-
-```text
-workshop/
-├── GB10competition/
-│   ├── README.md
-│   ├── requirements.txt
-│   └── 01_Image_Question_Answering.ipynb
-└── Texas_Flood_Student_Data/
-    ├── image_metadata.csv
-    ├── observations.sqlite
-    └── ... image files and folders supplied by the organizer
-```
-
-**Optional: direct image embeddings.** Only Method B in `02_Text_to_Image_Retrieval.ipynb` needs the extra packages below. Run this from the project folder with `gb10` activated, before starting JupyterLab:
-
-```sh
-python -m pip install -r requirements-embeddings.txt
-```
-
-This method downloads several GB of model files and runs on your computer. A compatible CUDA GPU is recommended; CPU execution is slower and needs substantial RAM. You can skip this installation for the other exercises.
-
-## Returning to the workshop later
-
-Open Anaconda Prompt or Terminal, change to the project folder, and run:
-
-```sh
-conda activate gb10
-python -m jupyterlab
-```
-
-You only need to create the environment and install the packages once. To stop JupyterLab, save your notebooks, return to its terminal, and press **Ctrl + C**. Confirm shutdown if prompted.
-
-## Common problems
-
-| Problem | What to do |
-| --- | --- |
-| `conda` is not recognized or is not found | On Windows, use **Anaconda Prompt**. On macOS/Linux, close and reopen Terminal; if needed, follow the shell initialization instructions in your installation guide. |
-| `No module named openai` | Run `conda activate gb10`, then repeat the package installation. Launch JupyterLab from that same environment. |
-| A package is installed, but the notebook cannot import it | Check the notebook’s Python environment with `import sys; print(sys.executable)`. It should point to `gb10`. Restart JupyterLab from the activated environment if needed. |
-| `requirements.txt` or an image cannot be found | Check that you opened the correct project folder and extracted the required data. For Texas flood data or `utils.py`, see the workshop files section above. |
-| Connection error or timeout | Check the server URL, workshop network/VPN, and whether the organizer’s GB10 server is running. |
-| Authentication error | Ask the organizer for the correct GB10 server key and update the relevant connection settings. |
+## 📄 License
+This project is licensed under the [MIT License](LICENSE).

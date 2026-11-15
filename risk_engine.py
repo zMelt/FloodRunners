@@ -44,7 +44,7 @@ def get_image_root() -> Path:
         Path("/tmp/datathon/UTSA-flood-images-complete/images"),
         Path("tmp/datathon/UTSA-flood-images-complete/images"),
         Path("sample_images"),
-        Path("datasets"),
+        Path("uploads"),
     ]
     for path in candidates:
         if path.exists():
